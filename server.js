@@ -14,7 +14,7 @@ app.use(function(req,res,next){
 //SETTING UP SERVER 
 var server = app.listen(process.env.PORT || 1234, function(){
 	var port = server.address().port;
-	console.log("App now running on port ", port);
+	//console.log("App now running on port ", port);
 });
 //INITIALISING CONNECTION STRING 
 var dbConfig = {
@@ -61,14 +61,20 @@ app.get("/api/user", function(req,res){
 	executeQuery(res, query);
 });
 
-
+//RESERVATION
+	//SEARCH
+app.get("/api/search", function(req,res){
+	var query = "SELECT * FROM reservations WHERE reservationName like '%" + req.query.searchTerm + "%'";
+	executeQuery(res, query);
+});
 
 //!!POST API !!
 
 //USERS
 app.post("/api/checkUser", function(req,res){
-	console.log("SELECT userid FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'");
-	var query = "SELECT userid FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
+	console.log("SELECT * FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'");
+	//var query = "SELECT userid FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
+	var query = "SELECT * FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
 	executeQuery(res,query);
 });
 
@@ -76,7 +82,7 @@ app.post("/api/checkUser", function(req,res){
 	//GET RESERVATIONS BY ARRIVALDATE
 app.post("/api/reservations", function(req,res){
         console.log("SELECT * FROM reservations WHERE arrivalDate = '" + req.query.arrivalDate +  "' AND reservationStatusId = 1");
-        var query = "SELECT * FROM reservations WHERE arrivalDate = '" + req.query.arrivalDate + "'";
+        var query = "SELECT * FROM reservations r JOIN bookingSource bs on r.bookingSource = bs.bookingSOurceId WHERE arrivalDate = '" + req.query.arrivalDate + "' AND reservationStatusId = 1";
         executeQuery(res,query);
 });
 
@@ -97,9 +103,26 @@ app.post("/api/getReservation", function(req,res){
 
 //GET IN HOUSE RESERVATIONS
 app.post("/api/reservationsInHouse", function(req,res){
-	console.log("SELECT * FROM reservations WHERE reservationId = 4");
+	console.log("SELECT * FROM reservations WHERE reservationStatusId = 4");
 	var query = "SELECT * FROM reservations WHERE reservationStatusId = 4";
 	executeQuery(res, query)
+});
+
+app.post("/api/createReservation",function(req,res){
+	console.log("INSERT INTO reservations (surname,forename, reservationName, arrivalDate, departureDate, bookingSource, reservationStatusId) VALUES ('dylan', 'bob', 'dylan, bob' ,'2017-11-01', '2017-11-01', 2, 1)");
+	var query = "INSERT INTO reservations (surname,forename, reservationName, arrivalDate, departureDate, bookingSource, reservationStatusId) VALUES ('dylan', 'bob', 'dylan, bob' ,'2017-11-01', '2017-11-02', 2, 1)";
+	executeQuery(res, query);
+});
+
+app.post("/api/checkIn", function(req,res){
+	var query = "UPDATE reservations SET reservationStatusId = 4 WHERE reservationId = " + req.query.reservationNum;
+	executeQuery(res, query);
+});
+
+app.post("/api/cancelReservation", function(req,res){
+	var query = "UPDATE reservations SET reservationStatusId = 2 WHERE reservationId = " + req.query.reservationNum;
+	console.log(query);
+	executeQuery(res, query);
 });
 
 //PUT API
