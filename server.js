@@ -23,6 +23,13 @@ var dbConfig = {
 	server: "wigwamer.cmrum3gstke6.eu-west-1.rds.amazonaws.com",
 	database: "pms"
 };
+
+var wwServerConfig = {
+	user: "sa",
+	password: "W1gw@m3r!",
+	server: "wigwamer.com",
+	database: "pms"
+}
 //FUNCTION TO CONNECT TO DB AND EXEC QUERY 
 var executeQuery = function(res, query){
      sql.close();
@@ -51,6 +58,39 @@ var executeQuery = function(res, query){
     })
 }
 //!!GET API!! 
+
+var executeWWQuery = function(res, query){
+     sql.close();
+	 sql.connect(wwServerConfig, function (err) {
+         if (err) {
+                     console.log("Error while connecting database :- " + err);
+                     res.send(err);
+		     sql.close();
+                  }
+         else {
+		// create Request object
+			var request = new sql.Request();
+			// query to the database
+			request.query(query, function (err,rs) {
+				if (err) {
+						console.log("Error while querying database :- " + err);
+						res.send(err);
+						sql.close();
+					}
+					else {
+							res.send(rs);
+							sql.close();
+					}
+			});
+		}
+    })
+}
+
+
+app.get("/api/testing",function(req,res){
+	var query = 'select * from "user"';
+	executeWWQuery(res, query);
+});
 
 //USERS
 app.get("/api/user", function(req,res){
@@ -90,7 +130,8 @@ app.post("/api/reservations", function(req,res){
 	//using 4 as checked in status
 app.post("/api/reservationsByDepartDate", function(req,res){
 		console.log("SELECT * FROM reservations WHERE departureDate = '" + req.query.departDate + "' AND reservationStatusId = 4");
-		var query = "SELECT * FROM reservations WHERE departureDate = '" + req.query.departDate + "'";
+		var query = "SELECT * FROM reservations WHERE departureDate = '" + req.query.departDate + "' AND reservationStatusId = 4";
+		console.log(query);
 		executeQuery(res, query);
 })
 
@@ -119,6 +160,11 @@ app.post("/api/checkIn", function(req,res){
 	executeQuery(res, query);
 });
 
+app.post("/api/checkOut", function(req,res){
+	var query = "UPDATE reservations SET reservationStatusId = 5 WHERE reservationId = " + req.query.reservationNum;
+	executeQuery(res, query);
+});
+
 app.post("/api/cancelReservation", function(req,res){
 	var query = "UPDATE reservations SET reservationStatusId = 2 WHERE reservationId = " + req.query.reservationNum;
 	console.log(query);
@@ -126,6 +172,76 @@ app.post("/api/cancelReservation", function(req,res){
 });
 
 //PUT API
+
+//NEW RESERVATION
+
+// function test(){
+	// var conn = new sql.ConnectionPool(dbConfig);
+	// conn.connect().then(function(conn){
+		// var request = new sql.Request(conn);
+		// request.input('surname', sql.NVarChar(50), "strainoger");
+		// request.input('forename', sql.NVarChar(50), "adam");
+		// request.input('arrivalDate', sql.NVarChar(50), '2017-12-01');
+		// request.input('departureDate', sql.NVarChar(50), '2017-12-01');
+		// request.input('bookingSource', sql.Int, 1);
+		// request.input('reservationStatus', sql.Int, 1);
+		// request.execute('sp_InsertReservation')
+		// .then(function(err, recordsets, returnValue, affected){
+			// console.log(recordsets);
+			// console.log(err);
+		// })
+		// .catch(function(err){
+			// console.log(err);
+		// });
+	// })
+// }
+
+// test();
+
+app.post("/api/saveReservation", function(req,res){
+	// var query = "INSERT INTO reservations (surname,forename,reservationName, arrivalDate, departureDate, bookingSource, reservationStatusId) VALUES ('" + req.query.surname + "','" + req.query.forename + "','" + req.query.surname + "," + req.query.forename + "','" + req.query.arrivalDate + "','" + req.query.departureDate + "'," + "1,1)";
+	query = "EXEC pms..sp_InsertReservation '" + req.query.surname + "','" + req.query.forename + "', '" + req.query.arrivalDate + "','" + req.query.departureDate + "', 1, 1";
+	// console.log(query);
+	// executeQuery(res,req);
+	var conn = new sql.ConnectionPool(dbConfig);
+	conn.connect().then(function(conn){
+		var request = new sql.Request(conn);
+		request.input('surname', sql.NVarChar(50), req.query.surname);
+		request.input('forename', sql.NVarChar(50), req.query.forename);
+		request.input('arrivalDate', sql.NVarChar(50), req.query.arrivalDate);
+		request.input('departureDate', sql.NVarChar(50), req.query.departureDate);
+		request.input('bookingSource', sql.Int, req.query.bookingSource);
+		request.input('reservationStatus', sql.Int, 1);
+		request.execute('sp_InsertReservation')
+		.then(function(err, recordsets, returnValue, affected){
+			console.log(recordsets);
+			res.send(err);
+		})
+		.catch(function(err){
+			res.send(err);
+			console.log(err);
+		});
+	})
+	
+	// var conn = new sql.ConnectionPool(dbConfig);
+	// sql.connect().then(function(conn){
+		// var request = new sql.Request(conn);
+		// request.input('surname', sql.NVarChar(50), req.query.surname);
+		// request.input('forename', sql.NVarChar(50), req.query.forename);
+		// request.input('arrivalDate', sql.NVarChar(50), req.query.arrivalDate);
+		// request.input('departureDate', sql.NVarChar(50), req.query.departureDate);
+		// request.input('bookingSource', sql.Int, 1);
+		// request.input('reservationStatus', sql.Int, 1);
+		// request.execute('sp_InsertReservation')
+		// .then(function(err, recordsets, returnValue, affected){
+			// console.dir(recordsets);
+			// console.dir(err);
+		// })
+		// .catch(function(err){
+			// console.log(err);
+		// });
+	// }) 
+});
 
 //SAVE RESERVATION
 app.put("/api/saveReservation", function(req,res){
