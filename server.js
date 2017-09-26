@@ -114,14 +114,6 @@ app.get("/api/search", function(req,res){
 	executeQuery(res, query);
 });
 
-//DATE
-	//GET SYSTEM DATE
-app.get("/api/getSystemDate", function(req,res){
-	var query = "SELECT systemdate FROM systemdates";
-	console.log(query);
-	executeWWQuery(res, query);
-})
-
 //APP
 	//GET ROOM TYPES
 app.get("/api/getRoomTypes", function(req, res){
@@ -130,6 +122,19 @@ app.get("/api/getRoomTypes", function(req, res){
 	executeWWQuery(res, query);
 })
 
+	//GET ROOMS BASED ON ROOM TYPES
+app.get('/api/getRoomsBasedOnRoomType', function(req, res){
+	var query = "SELECT * FROM units WHERE idunittype = " + req.query.roomTypeId + " AND inuse = 'Y'";
+	console.log(query);
+	executeWWQuery(res,query);
+});
+
+
+app.get("/api/getAllNationalities", function(req,res){
+	var query = "SELECT * FROM country";
+	console.log(query);	
+	executeWWQuery(res,query);
+});
 //!!POST API !!
 
 //USERS
@@ -150,7 +155,7 @@ app.post("/api/checkUser", function(req,res){
 //RESERVATIONS
 	//GET RESERVATIONS BY ARRIVALDATE
 app.post("/api/reservations", function(req,res){
-        var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode,rs.reservationcolour FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE fromdate = '" + req.query.arrivalDate + "' AND idreservationstatus = 1"; 
+        var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode,rs.reservationcolour,rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE fromdate = '" + req.query.arrivalDate + "' AND idreservationstatus = 1"; 
         console.log(query);
 		executeWWQuery(res,query);
 });
@@ -165,7 +170,7 @@ app.post("/api/changeAllToReservation", function(req,res){
 //GET DEPARTING RESERVATIONS
 	//using 4 as checked in status
 app.post("/api/reservationsByDepartDate", function(req,res){
-		var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 4";
+		var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode, rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 4";
 		console.log(query);
 		executeWWQuery(res, query);
 })
@@ -244,7 +249,7 @@ app.post("/api/saveReservation", function(req,res){
 		request.input('arrivaldate', sql.NVarChar(50), req.query.arrivalDate);
 		request.input('departdate', sql.NVarChar(50), req.query.departureDate);
 		request.input('idreservationsource', sql.Int, req.query.bookingSource);
-		//request.input('reservationStatus', sql.Int, 1);
+		request.input('idcountry', sql.Int, req.query.idNationality);
 		request.output('outReservationId', sql.Int);
 		request.output('outGuestId', sql.Int);
 		request.execute('sp_insertReservationGuest',function(err, recordsets, returnValue, affected){
@@ -279,11 +284,19 @@ app.post("/api/saveReservation", function(req,res){
 
 //SAVE RESERVATION
 app.put("/api/saveReservation", function(req,res){
-	console.log(req.query);
-	console.log( "UPDATE reservations SET surname = '" + req.query.surname + "', forename = '" + req.query.forename + "', reservationName  = '" + req.query.surname + "' WHERE reservationId = " + req.query.reservationId);
 	var query = "UPDATE reservations SET surname = '" + req.query.surname + "', forename = '" + req.query.forename + "', reservationName  = '" + req.query.surname + "' WHERE reservationId = " + req.query.reservationId ;
+	console.log(query);
 	executeQuery(res, req); 
 });
+
+//HOUSEKEEPING
+	//SET ROOM STATUS TO CLEAN
+		//FOR DEV IS CURRENTLY HARCODED TO SET ROOMID 1 TO CLEAN -- NEED TO FIX DYNAMICALLY - NEED AVAILABILITY SP
+app.post('/api/cleanRoom',function(req, res){
+	var query = "UPDATE units SET idhskstatus = 1 WHERE idunit = " + req.query.roomId;
+	console.log(query);
+	executeWWQuery(res, query);
+})
 
 //ROLL DAY
 app.post("/api/rollDay", function(req,res){
