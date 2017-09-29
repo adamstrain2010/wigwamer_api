@@ -1,6 +1,7 @@
 var express = require("express");
 var bodyParser = require("body-parser");
 var sql = require("mssql");
+var sqlSeriate = require("seriate");
 var app = express();
 app.use(bodyParser.json());
 
@@ -24,12 +25,16 @@ var dbConfig = {
 	database: "pms"
 };
 
+
 var wwServerConfig = {
 	user: "sa",
 	password: "W1gw@m3r!",
 	server: "wigwamer.com",
 	database: "pms"
 };
+
+
+
 
 //FUNCTION TO CONNECT TO DB AND EXEC QUERY 
 var executeQuery = function(res, query){
@@ -64,10 +69,10 @@ var executeWWQuery = function(res, query){
      sql.close();
 	 sql.connect(wwServerConfig, function (err) {
          if (err) {
-                     console.log("Error while connecting database :- " + err);
-                     res.send(err);
+		 	 console.log("Error while connecting database :- " + err);
+			 res.send(err);
 		     sql.close();
-                  }
+		 }
          else {
 		// create Request object
 			var request = new sql.Request();
@@ -89,9 +94,61 @@ var executeWWQuery = function(res, query){
 
 app.get("/api/getSystemDate", function(req, res){
 	var query = "select top 1 systemdate from systemdates";
+	console.log("GETTING SYSTEM DATE");
 	console.log(query);
 	executeWWQuery(res, query);
 });
+
+
+sqlSeriate.setDefaultConfig(wwServerConfig);
+
+function testing123(clientId, propertyId, rateCodeId, unitTypeId, fromDate, toDate){
+    return sqlSeriate.execute({
+        procedure: "sp_getRatesAndAvailability",
+        params: {
+            idclient: {
+                type: sqlSeriate.INT,
+                val: clientId
+            },
+            idproperty: {
+                type: sqlSeriate.INT,
+                val: propertyId
+            },
+            idratecode: {
+                type: sqlSeriate.INT,
+                val: rateCodeId
+            },
+            idunittype: {
+                type: sqlSeriate.INT,
+                val: unitTypeId
+            },
+			fromdate:{
+            	type: sqlSeriate.DATE,
+				val: fromDate
+			},
+            todate:{
+                type: sqlSeriate.DATE,
+                val: toDate
+            }
+        }
+    })
+}
+
+function testingYep(){
+    return sqlSeriate.execute({
+        query: "SELECT * FROM reservations",
+	})
+	.then(function(result){
+		return result;
+	});
+};
+
+app.get("/api/testingRoute", async function(req,res) {
+    let out;
+	out = await testing123(req.query.clientId, req.query.propertyId, req.query.rateCodeId, req.query.unitTypeId, req.query.fromDate, req.query.toDate);
+    console.dir(out);
+	res.send(out);
+})
 
 app.get("/api/testing",function(req,res){
 	var query = 'select * from "user"';
@@ -131,19 +188,57 @@ app.get('/api/getRoomsBasedOnRoomType', function(req, res){
 
 
 app.get("/api/getAllNationalities", function(req,res){
-	var query = "SELECT * FROM country";
+	var query = "SELECT idcountry, countryname, countryiso3 FROM country";
 	console.log(query);	
 	executeWWQuery(res,query);
 });
+
+
+//AVAILABILITY
+	//GET AVAILABILITY FROM DATE RANGE
+app.get("/api/getAvailabilityRange", function(req,res){
+    sql.connect(wwServerConfig).then(pool =>{
+    	return pool.request()
+        .input('idclient', sql.Int, req.query.clientId)
+		.input('idproperty', sql.Int, req.query.propertyId)
+		.input('idratecode', sql.Int, req.query.rateCodeId)
+		.input('idunittype', sql.Int, req.query.unitTypeId)
+		.input('fromdate', sql.NVarChar(50), req.query.fromDate)
+		.input('todate', sql.NVarChar(50), req.query.todate)
+		.execute('sp_getRatesandAvailability', (err, result) => {
+			err ? console.dir(err) : console.dir(result)
+		})
+	})
+
+	// var conn = new sql.ConnectionPool(wwServerConfig);
+    // conn.connect()
+	// .then(function(conn){
+	// 	var request = new sql.Request(conn);
+	// 	//request.input('clientId', sql.Int, req.query.clientId);
+	// 	request.input('idclient', sql.Int, req.query.clientId);
+	// 	request.input('idproperty', sql.Int, req.query.propertyId);
+	// 	request.input('idratecode', sql.Int, req.query.rateCodeId);
+	// 	request.input('idunittype', sql.Int, req.query.unitTypeId);
+	// 	request.input('fromdate', sql.NVarChar(50), req.query.fromDate);
+	// 	request.input('todate', sql.NVarChar(50), req.query.todate);
+	// 	request.execute('sp_getRatesandAvailability')
+	// 	.then(function(recordsets, returnValue, affected){
+	// 		res.end(recordsets);
+	// 	})
+	// 	.catch(function(err){
+	// 		console.log(err);
+	// 	});
+	// });
+});
+
+// app.post("/api/getAvailabilityRange", function(req, res){
+// 	var query = "EXEC sp_getRatesandAvailability  " + req.query.clientId + "," + req.query.propertyId + "," + req.query.rateCodeId + "," + req.query.unitTypeId + ",'" + req.query.fromDate + "','" +  req.query.toDate + "'";
+// 	console.log(query);
+// 	executeWWQuery(res, query);
+// });
+
 //!!POST API !!
 
-//USERS
-// app.post("/api/checkUser", function(req,res){
-	// console.log("SELECT * FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'");
-	// //var query = "SELECT userid FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
-	// var query = "SELECT * FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
-	// executeQuery(res,query);
-// });
 
 app.post("/api/checkUser", function(req,res){
 	//var query = "SELECT userid FROM users WHERE username='" + req.query.username + "' AND organisation = " + req.query.organisation + " AND password = '" + req.query.password + "'";
@@ -215,29 +310,6 @@ app.post("/api/cancelAll", function(req,res){
 //PUT API
 
 //NEW RESERVATION
-
-// function test(){
-	// var conn = new sql.ConnectionPool(dbConfig);
-	// conn.connect().then(function(conn){
-		// var request = new sql.Request(conn);
-		// request.input('surname', sql.NVarChar(50), "strainoger");
-		// request.input('forename', sql.NVarChar(50), "adam");
-		// request.input('arrivalDate', sql.NVarChar(50), '2017-12-01');
-		// request.input('departureDate', sql.NVarChar(50), '2017-12-01');
-		// request.input('bookingSource', sql.Int, 1);
-		// request.input('reservationStatus', sql.Int, 1);
-		// request.execute('sp_InsertReservation')
-		// .then(function(err, recordsets, returnValue, affected){
-			// console.log(recordsets);
-			// console.log(err);
-		// })
-		// .catch(function(err){
-			// console.log(err);
-		// });
-	// })
-// }
-
-// test();
 app.post("/api/saveReservation", function(req,res){
 	query = "EXEC pms..sp_InsertReservation '" + req.query.surname + "','" + req.query.forename + "', '" + req.query.arrivalDate + "','" + req.query.departureDate + "', 1, 1";
 	var conn = new sql.ConnectionPool(wwServerConfig);
@@ -250,6 +322,7 @@ app.post("/api/saveReservation", function(req,res){
 		request.input('departdate', sql.NVarChar(50), req.query.departureDate);
 		request.input('idreservationsource', sql.Int, req.query.bookingSource);
 		request.input('idcountry', sql.Int, req.query.idNationality);
+		request.input('idunittype', sql.Int, req.query.idUnitType);
 		request.output('outReservationId', sql.Int);
 		request.output('outGuestId', sql.Int);
 		request.execute('sp_insertReservationGuest',function(err, recordsets, returnValue, affected){
@@ -261,25 +334,6 @@ app.post("/api/saveReservation", function(req,res){
 			console.log(err);
 		});
 	})
-	
-	// var conn = new sql.ConnectionPool(dbConfig);
-	// sql.connect().then(function(conn){
-		// var request = new sql.Request(conn);
-		// request.input('surname', sql.NVarChar(50), req.query.surname);
-		// request.input('forename', sql.NVarChar(50), req.query.forename);
-		// request.input('arrivalDate', sql.NVarChar(50), req.query.arrivalDate);
-		// request.input('departureDate', sql.NVarChar(50), req.query.departureDate);
-		// request.input('bookingSource', sql.Int, 1);
-		// request.input('reservationStatus', sql.Int, 1);
-		// request.execute('sp_InsertReservation')
-		// .then(function(err, recordsets, returnValue, affected){
-			// console.dir(recordsets);
-			// console.dir(err);
-		// })
-		// .catch(function(err){
-			// console.log(err);
-		// });
-	// }) 
 });
 
 //SAVE RESERVATION
