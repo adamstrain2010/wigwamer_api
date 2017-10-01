@@ -277,6 +277,23 @@ function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, a
     })
 }
 
+function GetCharges(idReservation){
+    return sqlSeriate.execute({
+        procedure: "sp_ChargeBreakdown",
+        params: {
+            idreservation: {
+                type: sqlSeriate.INT,
+                val: idReservation
+            }
+        }
+    })
+}
+
+app.post("/api/getCharges", async function(req,res){
+	let out;
+    out = await GetCharges(req.query.idReservation);
+	res.send(out);
+})
 
 app.post("/api/insertExtra", async function(req,res) {
     let out;
