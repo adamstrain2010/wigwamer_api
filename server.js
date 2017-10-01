@@ -167,8 +167,9 @@ app.get("/api/user", function(req,res){
 //RESERVATION
 	//SEARCH
 app.get("/api/search", function(req,res){
-	var query = "SELECT * FROM reservations WHERE reservationName like '%" + req.query.searchTerm + "%'";
-	executeQuery(res, query);
+	var query = "SELECT * FROM reservations WHERE reservationname like '%" + req.query.searchTerm + "%'";
+	console.log(query);
+	executeWWQuery(res, query);
 });
 
 //APP
@@ -193,6 +194,14 @@ app.get("/api/getAllNationalities", function(req,res){
 	executeWWQuery(res,query);
 });
 
+//var toAdd = {"extraId": scope.chargeType.idextras, "extraDesc": scope.chargeType.extrasdescription ,"extraType": scope.chargeType, "qty": scope.extrasQuantity, "unitPrice": "£" + (2.2).toFixed(2), "subTotal": "£" + (scope.extrasQuantity * 2.2).toFixed(2)};
+
+//GET EXTRAS FROM RESERVATION ID
+app.get("/api/getReservationExtras", function(req,res){
+	var query = "SELECT re.idextras AS extraId, e.extrasdescription AS extraDesc, e.extrachargetype as extraType, 1 as qty, re.adultCharge as unitPrice, 1 * re.adultCharge as subTotal FROM reservations_extras re JOIN extras e on re.idextras = e.idextras WHERE idreservation = " + req.query.idReservation;
+	console.log(query);
+	executeWWQuery(res, query);
+})
 
 //AVAILABILITY
 	//GET AVAILABILITY FROM DATE RANGE
@@ -209,33 +218,106 @@ app.get("/api/getAvailabilityRange", function(req,res){
 			err ? console.dir(err) : console.dir(result)
 		})
 	})
-
-	// var conn = new sql.ConnectionPool(wwServerConfig);
-    // conn.connect()
-	// .then(function(conn){
-	// 	var request = new sql.Request(conn);
-	// 	//request.input('clientId', sql.Int, req.query.clientId);
-	// 	request.input('idclient', sql.Int, req.query.clientId);
-	// 	request.input('idproperty', sql.Int, req.query.propertyId);
-	// 	request.input('idratecode', sql.Int, req.query.rateCodeId);
-	// 	request.input('idunittype', sql.Int, req.query.unitTypeId);
-	// 	request.input('fromdate', sql.NVarChar(50), req.query.fromDate);
-	// 	request.input('todate', sql.NVarChar(50), req.query.todate);
-	// 	request.execute('sp_getRatesandAvailability')
-	// 	.then(function(recordsets, returnValue, affected){
-	// 		res.end(recordsets);
-	// 	})
-	// 	.catch(function(err){
-	// 		console.log(err);
-	// 	});
-	// });
 });
 
-// app.post("/api/getAvailabilityRange", function(req, res){
-// 	var query = "EXEC sp_getRatesandAvailability  " + req.query.clientId + "," + req.query.propertyId + "," + req.query.rateCodeId + "," + req.query.unitTypeId + ",'" + req.query.fromDate + "','" +  req.query.toDate + "'";
-// 	console.log(query);
-// 	executeWWQuery(res, query);
+function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, accomInclTax,accomExclTax,
+                     adultCharge, childCharge, infantCharge, fixedCharge, totalFlatCharge){
+    return sqlSeriate.execute({
+        procedure: "sp_insertExtras",
+        params: {
+            idclient: {
+                type: sqlSeriate.INT,
+                val: clientId
+            },
+            idproperty: {
+                type: sqlSeriate.INT,
+                val: propertyId
+            },
+            idextras: {
+                type: sqlSeriate.INT,
+                val: extraId
+            },
+            idreservation: {
+                type: sqlSeriate.INT,
+                val: reservationId
+            },
+            chargedate:{
+                type: sqlSeriate.DATE,
+                val: chargeDate
+            },
+            accommodationicltax:{
+                type: sqlSeriate.INT,
+                val: accomInclTax
+            },
+            accommodationexcltax:{
+                type: sqlSeriate.INT,
+                val: accomExclTax
+            },
+			adultcharge:{
+                type: sqlSeriate.MONEY,
+                val: adultCharge
+            },
+			childcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: childCharge
+            },
+			infantcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: infantCharge
+            },
+			fixedcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: fixedCharge
+            },
+			totalflatcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: totalFlatCharge
+            },
+		}
+    })
+}
+
+
+app.post("/api/insertExtra", async function(req,res) {
+    let out;
+    out = await InsertExtra(req.query.clientId, req.query.propertyId,
+		req.query.extraId, req.query.reservationId, req.query.chargeDate, req.query.accomIncltax, req.query.accomExclTax,req.query.adultCharge,req.query.childCharge,req.query.infantCharge, req.query.fixedCharge, req.query.totalflatcharge);
+    console.dir(out);
+    res.send(out);
+})
+
+// app.post("/api/insertExtra", function(req,res){
+// 	sql.connect(wwServerConfig).then(pool=>{
+// 		return pool.request()
+// 		.input('idclient', sql.Int, req.query.clientId)
+// 		.input('idproperty', sql.Int, req.query.propertyId)
+// 		.input('idextras', sql.Int, req.query.extraId)
+// 		.input('idreservation', sql.Int, req.query.reservationId)
+// 		.input('chargedate', sql.NVarChar(50), req.query.chargeDate)
+// 		.input('accommodationicltax', sql.Decimal(19,4), req.query.accomInclTax)
+// 		.input('accommodationexcltax', sql.Decimal(19,4), req.query.accomExclTax)
+// 		.input('adultcharge', sql.Decimal(19,4), req.query.adultCharge)
+// 		.input('childcharge', sql.Decimal(19,4), req.query.childCharge)
+// 		.input('infantcharge', sql.Decimal(19,4), req.query.infantCharge)
+// 		.input('fixedcharge', sql.Decimal(19,4), req.query.fixedCharge)
+// 		.input('totalflatcharge', sql.Decimal(19,4), req.query.totalFlatCharge)
+// 		.execute('sp_insertExtras', (err, result) => {
+//             err ? console.dir(err) : console.dir(result)
+//         })
+// 	})
 // });
+
+//GET ALL SPECIALS
+app.get("/api/getAllSpecials", function(req, res){
+    console.log("HITTING IT! HITTING IT!!!!!!!!!!!!!!!!!!!1");
+	var query = "select e.* from extras e join extrasproperty ep on e.idclient = ep.idclient and e.idclient = 1 and ep.idextrasproperty = 1";
+    console.log("");
+    console.log(query);
+    console.log("");
+    executeWWQuery(res, query);
+})
+
+
 
 //!!POST API !!
 
@@ -323,6 +405,7 @@ app.post("/api/saveReservation", function(req,res){
 		request.input('idreservationsource', sql.Int, req.query.bookingSource);
 		request.input('idcountry', sql.Int, req.query.idNationality);
 		request.input('idunittype', sql.Int, req.query.idUnitType);
+		request.input('idratecode', sql.Int, 1);
 		request.output('outReservationId', sql.Int);
 		request.output('outGuestId', sql.Int);
 		request.execute('sp_insertReservationGuest',function(err, recordsets, returnValue, affected){
