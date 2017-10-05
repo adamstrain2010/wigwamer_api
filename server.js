@@ -2,6 +2,7 @@ var express = require("express");
 var bodyParser = require("body-parser");
 var sql = require("mssql");
 var sqlSeriate = require("seriate");
+var moment = require("moment");
 var app = express();
 app.use(bodyParser.json());
 
@@ -34,9 +35,15 @@ var wwServerConfig = {
 };
 
 
+sqlSeriate.addConnection({
+	name: "testConn",
+	user: "sa",
+	password: "W1gw@m3r!",
+	host: "wigwamer.com",
+	database: "pms"
+});
 
-
-//FUNCTION TO CONNECT TO DB AND EXEC QUERY 
+//FUNCTION TO CONNECT TO DB AND EXEC QUERY
 var executeQuery = function(res, query){
      sql.close();
 	 sql.connect(dbConfig, function (err) {
@@ -220,6 +227,18 @@ app.get("/api/getAvailabilityRange", function(req,res){
 	})
 });
 
+app.get("/api/getTransactions", function(req,res){
+	var query = "SELECT * FROM transactions WHERE idreservation = " + req.query.reservationId;
+	console.log(query);
+	executeWWQuery(res, query);
+})
+
+app.get("/api/getTransactionCodes", function(req, res){
+	var query = "SELECT * FROM transactioncodes WHERE idclient = " + req.query.clientId;
+	console.log(query);
+	executeWWQuery(res,query);
+})
+
 function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, accomInclTax,accomExclTax,
                      adultCharge, childCharge, infantCharge, fixedCharge, totalFlatCharge){
     return sqlSeriate.execute({
@@ -277,6 +296,87 @@ function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, a
     })
 }
 
+function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, accomInclTax,accomExclTax,
+                     adultCharge, childCharge, infantCharge, fixedCharge, totalFlatCharge){
+    return sqlSeriate.execute({
+        procedure: "sp_insertExtras",
+        params: {
+            idclient: {
+                type: sqlSeriate.INT,
+                val: clientId
+            },
+			idproperty: {
+                type: sqlSeriate.INT,
+                val: propertyId
+            },
+			idextras: {
+                type: sqlSeriate.INT,
+                val: extraId
+            },
+			idreservation: {
+                type: sqlSeriate.INT,
+                val: reservationId
+            },
+            chargedate: {
+                type: sqlSeriate.DATE,
+                val: chargeDate
+            },
+            accommodationicltax:{
+                type: sqlSeriate.DECIMAL,
+                val: accomInclTax
+			},
+            accommodationexcltax:{
+                type: sqlSeriate.DECIMAL,
+                val: accomExclTax
+			},
+            adultcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: adultCharge
+			},
+            childcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: childCharge
+			},
+            infantcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: infantCharge
+			},
+            fixedcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: fixedCharge
+			},
+            totalflatcharge:{
+                type: sqlSeriate.DECIMAL,
+                val: totalFlatCharge
+			}
+		}
+    })
+}
+
+function CalcBalanceToPay(idReservation){
+    return sqlSeriate.execute({
+        procedure: "sp_GetBalanceToPay",
+        params: {
+            idReservation: {
+                type: sqlSeriate.INT,
+                val: idReservation
+            }
+        }
+    })
+}
+
+app.get("/api/getBalanceToPay",async function(req,res){
+	let out;
+	out = await CalcBalanceToPay(req.query.reservationId);
+	res.send(out);
+})
+
+app.post("/api/getCharges", async function(req,res){
+	let out;
+    out = await GetCharges(req.query.idReservation);
+	res.send(out);
+})
+
 function GetCharges(idReservation){
     return sqlSeriate.execute({
         procedure: "sp_ChargeBreakdown",
@@ -289,19 +389,75 @@ function GetCharges(idReservation){
     })
 }
 
-app.post("/api/getCharges", async function(req,res){
-	let out;
-    out = await GetCharges(req.query.idReservation);
-	res.send(out);
-})
-
 app.post("/api/insertExtra", async function(req,res) {
     let out;
+    console.log("CLIENT ID:");
+    console.log(req.query.clientId)
+    console.log("");
     out = await InsertExtra(req.query.clientId, req.query.propertyId,
-		req.query.extraId, req.query.reservationId, req.query.chargeDate, req.query.accomIncltax, req.query.accomExclTax,req.query.adultCharge,req.query.childCharge,req.query.infantCharge, req.query.fixedCharge, req.query.totalflatcharge);
-    console.dir(out);
+		req.query.extraId, req.query.reservationId, req.query.chargeDate, req.query.accomIncltax, req.query.accomExclTax,req.query.adultCharge,req.query.childCharge,req.query.infantCharge, req.query.fixedCharge, req.query.totalflatcharge)
+	console.dir(out);
     res.send(out);
 })
+
+function insertPosting(reservationIdIN, transcodeIdIN, valueIN, taxIn){
+    var d = moment.utc().local().format("L LT");
+	console.log(d);
+
+	sqlSeriate.getPlainContext("testConn")
+	.step("insertPosting",{
+		query: "INSERT INTO transactions (idreservation, idtransactioncode, valuetransaction, datetransaction, valuetax) VALUES (@reservationId, @transCodeId, @val, @transDate,@valueTax)",
+		params: {
+			reservationId: {
+				type: sqlSeriate.INT,
+				val: reservationIdIN,
+			},
+			transCodeId: {
+				type: sqlSeriate.INT,
+				val: transcodeIdIN,
+			},
+			val: {
+				type: sqlSeriate.MONEY,
+				val: valueIN,
+			},
+			transDate:{
+				type: sqlSeriate.NVARCHAR,
+				val: moment().format("YYYY-MM-DD HH:mm:ss"),
+			},
+			valueTax:{
+				type: sqlSeriate.MONEY,
+				val: taxIn,
+			}
+		}
+	})
+	.end(function(sets){
+		return sets;
+	})
+	.error(function(err){
+		console.log(err);
+	})
+};
+
+
+
+app.get("/api/insertPosting",async function(req,res){
+	console.log(req.query.value);
+	let out;
+	out = await insertPosting(req.query.reservationId, req.query.transcodeId, req.query.value, req.query.tax);
+	res.send(out);
+});
+
+app.get("/api/getPostings", function(req,res){
+	var query = "select t.idtransaction, t.void,t.datetransaction as datetransaction, tc.transactiondescription as transactiondescription,t.valuetransaction as valuetransaction\n" +
+        "from transactions t\n" +
+        "join transactioncodes tc\n" +
+        "on t.idtransactioncode = tc.idtransactioncode\n" +
+        "where t.idreservation = " + req.query.reservationId + " ORDER BY t.datetransaction";
+	console.log(query);
+	executeWWQuery(res, query);
+})
+
+
 
 // app.post("/api/insertExtra", function(req,res){
 // 	sql.connect(wwServerConfig).then(pool=>{
@@ -348,11 +504,54 @@ app.post("/api/checkUser", function(req,res){
 
 //RESERVATIONS
 	//GET RESERVATIONS BY ARRIVALDATE
-app.post("/api/reservations", function(req,res){
-        var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode,rs.reservationcolour,rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE fromdate = '" + req.query.arrivalDate + "' AND idreservationstatus = 1"; 
-        console.log(query);
-		executeWWQuery(res,query);
+	//GET RESERVATIONS BY ARRIVALDATE
+function getReservationsByArrivalDate(arrivaldate){
+	return sqlSeriate.execute({
+		procedure: "sp_GetReservationsWithBalances",
+		params:{
+			arrivaldate: {
+				type: sqlSeriate.DATE,
+				val: arrivaldate
+			}
+		}
+	})
+}
+
+function voidTransaction(transactionId){
+	return sqlSeriate.execute({
+		query: "UPDATE transactions SET void = 1 WHERE idtransaction = @idTransaction",
+		params:{
+			idTransaction:{
+				type: sqlSeriate.INT,
+				val: transactionId
+			}
+		}
+	})
+}
+
+app.post("/api/voidTransaction", async function(req,res){
+	let out;
+	out = await voidTransaction(req.query.transId);
+	res.send(out);
+})
+
+app.post("/api/reservations", async function(req,res){
+    let out;
+    out = await getReservationsByArrivalDate(req.query.arrivalDate);
+    res.send(out);
+	// var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode,rs.reservationcolour,rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE fromdate = '" + req.query.arrivalDate + "' AND idreservationstatus = 1";
+        // console.log(query);
+		// executeWWQuery(res,query);
+
 });
+
+
+// app.post("/api/getCharges", async function(req,res){
+//     let out;
+//     out = await GetCharges(req.query.idReservation);
+//     res.send(out);
+// })
+
 
 //FOR DEV TURN ALL RESERVATIONS TO RESERVATION STATUS
 app.post("/api/changeAllToReservation", function(req,res){
