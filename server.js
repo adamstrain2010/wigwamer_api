@@ -371,6 +371,29 @@ app.get("/api/getBalanceToPay",async function(req,res){
 	res.send(out);
 })
 
+//GET IN HOUSE GUESTLIST
+app.get("/api/getInHouseGuests", function(req, res){
+	var query = "SELECT r.idreservation, \n" +
+        "r.reservationname,\n" +
+        "r.fromdate,\n" +
+        "r.todate,\n" +
+        "r.idreservationsource,\n" +
+        "rs.reservationsourcedescription,\n" +
+        "rs.reservationsourcecode,\n" +
+        "rs.reservationcolour\n" +
+        "  FROM reservations r\n" +
+        "JOIN unitsbooked ub\n" +
+        "ON r.idreservation = ub.idreservation\n" +
+        "JOIN reservationsource rs\n" +
+        "ON r.idreservationsource = rs.idreservationsource\n" +
+        "WHERE ub.bookeddate = '2017-06-07'";
+		console.log(query);
+		executeWWQuery(res,query);
+})
+
+
+
+
 app.post("/api/getCharges", async function(req,res){
 	let out;
     out = await GetCharges(req.query.idReservation);
@@ -505,13 +528,24 @@ app.post("/api/checkUser", function(req,res){
 //RESERVATIONS
 	//GET RESERVATIONS BY ARRIVALDATE
 	//GET RESERVATIONS BY ARRIVALDATE
-function getReservationsByArrivalDate(arrivaldate){
+function getReservationsByArrivalDate(arrivaldate, inhousedate, idUnitType){
+	console.log(idUnitType);
+	console.log(arrivaldate);
+	console.log(inhousedate);
 	return sqlSeriate.execute({
 		procedure: "sp_GetReservationsWithBalances",
 		params:{
 			arrivaldate: {
 				type: sqlSeriate.DATE,
 				val: arrivaldate
+			},
+			inhousedate:{
+				type: sqlSeriate.DATE,
+				val: inhousedate
+			},
+			idunittype: {
+				type: sqlSeriate.INT,
+				val: idUnitType
 			}
 		}
 	})
@@ -537,7 +571,7 @@ app.post("/api/voidTransaction", async function(req,res){
 
 app.post("/api/reservations", async function(req,res){
     let out;
-    out = await getReservationsByArrivalDate(req.query.arrivalDate);
+    out = await getReservationsByArrivalDate(req.query.arrivalDate, req.query.inHouseDate, req.query.idUnitType);
     res.send(out);
 	// var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode,rs.reservationcolour,rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE fromdate = '" + req.query.arrivalDate + "' AND idreservationstatus = 1";
         // console.log(query);
@@ -570,26 +604,26 @@ app.post("/api/reservationsByDepartDate", function(req,res){
 
 //GET IN HOUSE RESERVATIONS
 app.post("/api/reservationsInHouse", function(req,res){
-	var query = "SELECT * FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE idreservationstatus = 4";
+	var query = "SELECT * FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE idreservationstatus = 7";
 	console.log(query);
 	executeWWQuery(res, query)
 });
 
 //GET SPECIFIC RESERVATION BY RESERVATIONNUM
 app.post("/api/getReservation", function(req,res){
-	var query = "SELECT r.*, g.* FROM reservations r join reservationsguest rg on r.idreservation = rg.idreservation join guest g on rg.idguest = g.idguest WHERE r.idreservation = " + req.query.reservationId;
+	var query = "SELECT TOP 1 r.*,g.*,ub.idunittype, ut.unittypedesc FROM reservations r join reservationsguest rg on r.idreservation = rg.idreservation join guest g on rg.idguest = g.idguest JOIN unitsbooked ub ON r.idreservation = ub.idreservation JOIN unittype ut ON ub.idunittype = ut.idunittype WHERE r.idreservation = " + req.query.reservationId;
 	console.log(query);
 	executeWWQuery(res,query);
 });
 
 app.post("/api/checkIn", function(req,res){
-	var query = "UPDATE reservations SET idreservationstatus = 4 WHERE idreservation = " + req.query.reservationNum;
+	var query = "UPDATE reservations SET idreservationstatus = 7 WHERE idreservation = " + req.query.reservationNum;
 	console.log(query);
 	executeWWQuery(res, query);
 });
 
 app.post("/api/checkOut", function(req,res){
-	var query = "UPDATE reservations SET idreservationstatus = 5 WHERE idreservation = " + req.query.reservationNum;
+	var query = "UPDATE reservations SET idreservationstatus = 8 WHERE idreservation = " + req.query.reservationNum;
 	console.log(query);
 	executeWWQuery(res, query);
 });
@@ -629,7 +663,7 @@ app.post("/api/saveReservation", function(req,res){
 			res.send(recordsets.output);
 		})
 		.catch(function(err){
-			res.send(err);
+			//res.send(err);
 			console.log(err);
 		});
 	})
