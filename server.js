@@ -4,12 +4,14 @@ var sql = require("mssql");
 var sqlSeriate = require("seriate");
 var moment = require("moment");
 var app = express();
+
 app.use(bodyParser.json());
+
 
 //CORS MIDDLEWARE 
 app.use(function(req,res,next){
     res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
+    res.header("Access-Control-Allow-Methods", "GET,HEAD, DELETE, OPTIONS,POST,PUT");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, contentType,Content-Type, Accept, Authorization");
     next();
 });
@@ -71,6 +73,12 @@ var executeQuery = function(res, query){
     })
 }
 //!!GET API!! 
+app.get("/api/getSystemOptions", function(req, res){
+    var query = "select * from systemoptions WHERE idproperty = '" + req.query.idproperty +"'";
+    console.log(query);
+    executeWWQuery(res, query);
+});
+
 
 var executeWWQuery = function(res, query){
      sql.close();
@@ -141,6 +149,33 @@ function testing123(clientId, propertyId, rateCodeId, unitTypeId, fromDate, toDa
     })
 }
 
+function getConcurrentRooms(fromDate,toDate,idUnitType){
+    return sqlSeriate.execute({
+        procedure: "sp_getConcurrentAvailability",
+        params: {
+            fromDate: {
+                type: sqlSeriate.DATE,
+                val: fromDate
+            },
+            toDate: {
+                type: sqlSeriate.DATE,
+                val: toDate
+            },
+            idUnitType: {
+                type: sqlSeriate.INT,
+                val: idUnitType
+            }
+        }
+    })
+}
+
+app.get("/api/getConcurrentRooms", async function(req,res) {
+    let out;
+    out = await getConcurrentRooms(req.query.fromDate, req.query.toDate, req.query.idUnitType);
+    console.dir(out);
+    res.send(out);
+})
+
 function testingYep(){
     return sqlSeriate.execute({
         query: "SELECT * FROM reservations",
@@ -205,7 +240,7 @@ app.get("/api/getAllNationalities", function(req,res){
 
 //GET EXTRAS FROM RESERVATION ID
 app.get("/api/getReservationExtras", function(req,res){
-	var query = "SELECT re.idextras AS extraId, e.extrasdescription AS extraDesc, e.extrachargetype as extraType, 1 as qty, re.adultCharge as unitPrice, 1 * re.adultCharge as subTotal FROM reservations_extras re JOIN extras e on re.idextras = e.idextras WHERE idreservation = " + req.query.idReservation;
+	var query = "SELECT re.idreservationextras, re.idextras AS extraId, e.extrasdescription AS extraDesc, e.extrachargetype as extraType, 1 as qty, re.adultCharge as unitPrice, 1 * re.adultCharge as subTotal FROM reservations_extras re JOIN extras e on re.idextras = e.idextras WHERE idreservation = " + req.query.idReservation;
 	console.log(query);
 	executeWWQuery(res, query);
 })
@@ -393,6 +428,19 @@ app.get("/api/getInHouseGuests", function(req, res){
 
 
 
+//GET ALL RATE CODES
+app.get("/api/getRateCodes", function(req,res){
+	var query = "SELECT * FROM ratecodes WHERE idclient = " + req.query.idClient + " AND idproperty = " + req.query.idProperty;
+	console.log(query);
+	executeWWQuery(res, query);
+})
+
+
+app.get("/api/getHistory", function(req,res){
+	var query = "SELECT * FROM reservationlog WHERE idproperty = " + req.query.idproperty + " AND  idreservation = " + req.query.idreservation;
+	console.log(query);
+	executeWWQuery(res, query);
+})
 
 app.post("/api/getCharges", async function(req,res){
 	let out;
@@ -482,27 +530,6 @@ app.get("/api/getPostings", function(req,res){
 
 
 
-// app.post("/api/insertExtra", function(req,res){
-// 	sql.connect(wwServerConfig).then(pool=>{
-// 		return pool.request()
-// 		.input('idclient', sql.Int, req.query.clientId)
-// 		.input('idproperty', sql.Int, req.query.propertyId)
-// 		.input('idextras', sql.Int, req.query.extraId)
-// 		.input('idreservation', sql.Int, req.query.reservationId)
-// 		.input('chargedate', sql.NVarChar(50), req.query.chargeDate)
-// 		.input('accommodationicltax', sql.Decimal(19,4), req.query.accomInclTax)
-// 		.input('accommodationexcltax', sql.Decimal(19,4), req.query.accomExclTax)
-// 		.input('adultcharge', sql.Decimal(19,4), req.query.adultCharge)
-// 		.input('childcharge', sql.Decimal(19,4), req.query.childCharge)
-// 		.input('infantcharge', sql.Decimal(19,4), req.query.infantCharge)
-// 		.input('fixedcharge', sql.Decimal(19,4), req.query.fixedCharge)
-// 		.input('totalflatcharge', sql.Decimal(19,4), req.query.totalFlatCharge)
-// 		.execute('sp_insertExtras', (err, result) => {
-//             err ? console.dir(err) : console.dir(result)
-//         })
-// 	})
-// });
-
 //GET ALL SPECIALS
 app.get("/api/getAllSpecials", function(req, res){
     console.log("HITTING IT! HITTING IT!!!!!!!!!!!!!!!!!!!1");
@@ -569,6 +596,50 @@ app.post("/api/voidTransaction", async function(req,res){
 	res.send(out);
 })
 
+app.post("/api/allocateRoom", async function(req,res){
+	let out;
+	out = await allocateRooms(req.query.idReservation, req.query.idUnit);
+	res.send(out);
+})
+
+app.post("/api/deallocateRoom", async function(req,res){
+    let out;
+    out = await deallocateRooms(req.query.idReservation);
+    res.send(out);
+})
+
+app.post("/api/testytest", function(req, res){
+	res.send(req.idReservation);
+})
+
+function allocateRooms(idReservation, idUnit){
+    return sqlSeriate.execute({
+        query: "UPDATE unitsbooked SET idunit = @idunit WHERE idreservation = @idreservation",
+        params:{
+            idunit:{
+                type: sqlSeriate.INT,
+                val: idUnit
+            },
+			idreservation:{
+            	type: sqlSeriate.INT,
+				val: idReservation
+			}
+        }
+    })
+}
+
+function deallocateRooms(idReservation){
+    return sqlSeriate.execute({
+        query: "UPDATE unitsbooked SET idunit = null WHERE idreservation = @idreservation",
+        params:{
+            idreservation:{
+                type: sqlSeriate.INT,
+                val: idReservation
+            }
+        }
+    })
+}
+
 app.post("/api/reservations", async function(req,res){
     let out;
     out = await getReservationsByArrivalDate(req.query.arrivalDate, req.query.inHouseDate, req.query.idUnitType);
@@ -580,11 +651,8 @@ app.post("/api/reservations", async function(req,res){
 });
 
 
-// app.post("/api/getCharges", async function(req,res){
-//     let out;
-//     out = await GetCharges(req.query.idReservation);
-//     res.send(out);
-// })
+
+
 
 
 //FOR DEV TURN ALL RESERVATIONS TO RESERVATION STATUS
@@ -595,7 +663,6 @@ app.post("/api/changeAllToReservation", function(req,res){
 });
 
 //GET DEPARTING RESERVATIONS
-	//using 4 as checked in status
 app.post("/api/reservationsByDepartDate", function(req,res){
 		var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode, rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 4";
 		console.log(query);
@@ -611,7 +678,7 @@ app.post("/api/reservationsInHouse", function(req,res){
 
 //GET SPECIFIC RESERVATION BY RESERVATIONNUM
 app.post("/api/getReservation", function(req,res){
-	var query = "SELECT TOP 1 r.*,g.*,ub.idunittype, ut.unittypedesc FROM reservations r join reservationsguest rg on r.idreservation = rg.idreservation join guest g on rg.idguest = g.idguest JOIN unitsbooked ub ON r.idreservation = ub.idreservation JOIN unittype ut ON ub.idunittype = ut.idunittype WHERE r.idreservation = " + req.query.reservationId;
+	var query = "SELECT TOP 1 r.*,g.*,ub.idunittype, ub.idunit, u.unitdescription, ub.idratecode, ut.unittypedesc FROM reservations r join reservationsguest rg on r.idreservation = rg.idreservation join guest g on rg.idguest = g.idguest JOIN unitsbooked ub ON r.idreservation = ub.idreservation JOIN unittype ut ON ub.idunittype = ut.idunittype LEFT JOIN units u ON ub.idunit = u.idunit JOIN ratecodes rc ON ub.idratecode = rc.idratecode WHERE r.idreservation = " + req.query.reservationId;
 	console.log(query);
 	executeWWQuery(res,query);
 });
@@ -655,6 +722,7 @@ app.post("/api/saveReservation", function(req,res){
 		request.input('idreservationsource', sql.Int, req.query.bookingSource);
 		request.input('idcountry', sql.Int, req.query.idNationality);
 		request.input('idunittype', sql.Int, req.query.idUnitType);
+		request.input('idunit', sql.Int, req.query.idUnit);
 		request.input('idratecode', sql.Int, 1);
 		request.output('outReservationId', sql.Int);
 		request.output('outGuestId', sql.Int);
@@ -700,3 +768,12 @@ app.post("/api/rollDay", function(req,res){
 		});
 	})
 });
+
+
+//DELETE API
+app.delete("/api/deleteExtra", function(req, res){
+	var query = "DELETE FROM reservations_extras WHERE idreservationextras = " + req.query.idReservationExtra;
+	console.log(query);
+	executeWWQuery(res, query);
+})
+
