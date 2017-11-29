@@ -5,6 +5,7 @@ var sqlSeriate = require("seriate");
 var moment = require("moment");
 var app = express();
 
+
 app.use(bodyParser.json());
 
 
@@ -18,7 +19,7 @@ app.use(function(req,res,next){
 //SETTING UP SERVER 
 var server = app.listen(process.env.PORT || 1234, function(){
 	var port = server.address().port;
-	//console.log("App now running on port ", port);
+	console.log("App now running on port ", port);
 });
 //INITIALISING CONNECTION STRING 
 var dbConfig = {
@@ -108,6 +109,7 @@ var executeWWQuery = function(res, query){
 }
 
 app.get("/api/getSystemDate", function(req, res){
+    //WHERE idproperty = blabla
 	var query = "select top 1 systemdate from systemdates";
 	console.log("GETTING SYSTEM DATE");
 	console.log(query);
@@ -174,6 +176,44 @@ app.get("/api/getConcurrentRooms", async function(req,res) {
     out = await getConcurrentRooms(req.query.fromDate, req.query.toDate, req.query.idUnitType);
     console.dir(out);
     res.send(out);
+})
+
+app.get("/api/getNonConcurrentRooms", function(req,res) {
+    var query = "SELECT *, unitdescription as number FROM units WHERE idunittype = " + req.query.idUnitType + " AND inuse = 'Y'";
+	executeWWQuery(res, query);
+})
+
+app.get("/api/getDetailedAvailability", async function(req,res){
+	let out;
+    out = await getDetailedAvailability(req.query.fromDate, req.query.toDate, req.query.idUnitType);
+    console.dir(out);
+    res.send(out);
+})
+
+
+function getDetailedAvailability(fromdate, todate, idUnitType){
+    return sqlSeriate.execute({
+        procedure: "sp_getUnitAvailability",
+        params: {
+            fromDate: {
+                type: sqlSeriate.DATE,
+                val: fromdate
+            },
+            toDate: {
+                type: sqlSeriate.DATE,
+                val: todate
+            },
+            idunittype: {
+                type: sqlSeriate.INT,
+                val: idUnitType
+            }
+        }
+    })
+}
+
+app.get("/api/getAllReservations", function(req, res){
+	var query = "SELECT * FROM reservations r JOIN reservationstatus rs ON r.idreservationstatus = rs.idreservationstatus WHERE fromdate BETWEEN '" + req.query.arrivalFromDate + "' AND '" + req.query.arrivalToDate + "' AND todate BETWEEN '" + req.query.departureFromDate + "' AND '" + req.query.departureToDate + "'";
+	executeWWQuery(res, query);
 })
 
 function testingYep(){
@@ -409,6 +449,11 @@ app.get("/api/getBalanceToPay",async function(req,res){
 //GET IN HOUSE GUESTLIST
 app.get("/api/getInHouseGuests", function(req, res){
 	var query = "SELECT r.idreservation, \n" +
+
+
+
+
+
         "r.reservationname,\n" +
         "r.fromdate,\n" +
         "r.todate,\n" +
@@ -529,11 +574,16 @@ app.get("/api/getPostings", function(req,res){
 })
 
 
+app.get("/api/getHKUnits", function(req,res){
+    var query = "Select u.idunit, u.idunittype, ut.unittypedesc, u.unitnumber, u.idunitstatus, u.idhskstatus, r.idreservation, r.reservationname, r.fromdate, r.todate, us.unitstatusdesc, hs.hskstatusdesc, r2.idreservation as residreservation, r2.reservationname as resreservationname, r2.fromdate as resfromdate, r2.todate as restodate from units u JOIN unitstatus us ON u.idunitstatus = us.idunitstatus JOIN hskstatus hs ON u.idhskstatus =hs.idhskstatus JOIN unittype ut ON u.idunittype = ut.idunittype left outer join unitsoccupied uo on (u.idunit = uo.idunit) left outer join reservations r on (uo.idreservation = r.idreservation) left outer join unitsbooked ub on (u.idunit = ub.idunit and ub.bookeddate = (select systemdate from systemdates)) left outer join reservations r2 on (ub.idreservation = r2.idreservation and r2.idreservationstatus = 1) where u.inuse = 'y'";
+    console.log(query);
+    executeWWQuery(res, query);
+})
+
 
 //GET ALL SPECIALS
 app.get("/api/getAllSpecials", function(req, res){
-    console.log("HITTING IT! HITTING IT!!!!!!!!!!!!!!!!!!!1");
-	var query = "select e.* from extras e join extrasproperty ep on e.idclient = ep.idclient and e.idclient = 1 and ep.idextrasproperty = 1";
+    var query = "select e.* from extras e join extrasproperty ep on e.idclient = ep.idclient and e.idclient = 1 and ep.idextrasproperty = 1";
     console.log("");
     console.log(query);
     console.log("");
@@ -578,6 +628,18 @@ function getReservationsByArrivalDate(arrivaldate, inhousedate, idUnitType){
 	})
 }
 
+function autoAllocateRooms(reservationarray){
+	return sqlSeriate.execute({
+		procedure: "sp_AutoAllocate",
+		params:{
+			reservationArray: {
+				type: sqlSeriate.NVARCHAR,
+				val: reservationarray
+			}
+		}
+	})
+}
+
 function voidTransaction(transactionId){
 	return sqlSeriate.execute({
 		query: "UPDATE transactions SET void = 1 WHERE idtransaction = @idTransaction",
@@ -608,9 +670,45 @@ app.post("/api/deallocateRoom", async function(req,res){
     res.send(out);
 })
 
+app.post("/api/autoAllocate", async function(req, res){
+	let out;
+	out = await autoAllocateRooms(req.query.reservations);
+	res.send(out);
+})
+
 app.post("/api/testytest", function(req, res){
 	res.send(req.idReservation);
 })
+
+app.post("/api/getReservationsFull", async function(req, res){
+    let out;
+    out = await getReservationsFull(req.query.arrivalFromDate, req.query.arrivalToDate, req.query.departureFromDate, req.query.departureToDate);
+    res.send(out);
+})
+
+function getReservationsFull(arrivalFrom, arrivalTo, departureFrom, departureTo){
+    return sqlSeriate.execute({
+        procedure: "sp_GetReservationsWithBalancesFull",
+        params:{
+            arrivalfromdate: {
+                type: sqlSeriate.DATE,
+                val: arrivalFrom
+            },
+            arrivaltodate: {
+                type: sqlSeriate.DATE,
+                val: arrivalTo
+            },
+            departurefromdate: {
+                type: sqlSeriate.DATE,
+                val: departureFrom
+            },
+            departuretodate: {
+                type: sqlSeriate.DATE,
+                val: departureTo
+            }
+        }
+    })
+}
 
 function allocateRooms(idReservation, idUnit){
     return sqlSeriate.execute({
@@ -663,18 +761,62 @@ app.post("/api/changeAllToReservation", function(req,res){
 });
 
 //GET DEPARTING RESERVATIONS
-app.post("/api/reservationsByDepartDate", function(req,res){
-		var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode, rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 4";
-		console.log(query);
-		executeWWQuery(res, query);
+app.post("/api/reservationsByDepartDate",async function(req,res){
+    let out;
+    out = await getReservationsByDepartDate(req.query.departDate);
+    res.send(out);
+    // var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode, rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 7";
+		// console.log(query);
+		// executeWWQuery(res, query);
 })
 
+function getReservationsByDepartDate(departDate){
+    return sqlSeriate.execute({
+        procedure: 'sp_GetReservationsDepartingWithBalances',
+        params: {
+            departuredate: {
+                type: sqlSeriate.DATE,
+                val: departDate
+            },
+        }
+
+    })
+}
+
+app.post("/api/reservationsByDepartDate",async function(req,res){
+    let out;
+    out = await getReservationsByDepartDate(req.query.departDate);
+    res.send(out);
+    // var query = "SELECT r.idreservation, r.reservationname, r.fromdate, r.todate, rs.reservationsourcecode, rs.reservationsourcedescription FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE todate = '" + req.query.departDate + "' AND idreservationstatus = 7";
+    // console.log(query);
+    // executeWWQuery(res, query);
+})
+
+function getReservationsByDepartDate(departDate){
+    return sqlSeriate.execute({
+        procedure: 'sp_GetReservationsDepartingWithBalances',
+        params: {
+            departuredate: {
+                type: sqlSeriate.DATE,
+                val: departDate
+            },
+        }
+
+    })
+}
+
 //GET IN HOUSE RESERVATIONS
-app.post("/api/reservationsInHouse", function(req,res){
-	var query = "SELECT * FROM reservations r JOIN reservationsource rs ON r.idreservationsource = rs.idreservationsource WHERE idreservationstatus = 7";
-	console.log(query);
-	executeWWQuery(res, query)
+app.post("/api/reservationsInHouse",async function(req,res) {
+    let out;
+    out = await getReservationsInHouse(req.query.departDate);
+    res.send(out);
 });
+
+function getReservationsInHouse(){
+    return sqlSeriate.execute({
+        procedure: 'sp_GetReservationsInHouseWithBalances'
+    })
+}
 
 //GET SPECIFIC RESERVATION BY RESERVATIONNUM
 app.post("/api/getReservation", function(req,res){
@@ -684,13 +826,13 @@ app.post("/api/getReservation", function(req,res){
 });
 
 app.post("/api/checkIn", function(req,res){
-	var query = "UPDATE reservations SET idreservationstatus = 7 WHERE idreservation = " + req.query.reservationNum;
+	var query = "UPDATE reservations SET idreservationstatus = 7 WHERE idreservation = " + req.query.reservationNum + "; INSERT INTO unitsoccupied (idreservation, idunit) VALUES (" + req.query.reservationNum + "," + req.query.idUnit + "); UPDATE units SET idunitstatus = 2, idhskstatus = 1 WHERE idunit = " + req.query.idUnit;
 	console.log(query);
 	executeWWQuery(res, query);
 });
 
 app.post("/api/checkOut", function(req,res){
-	var query = "UPDATE reservations SET idreservationstatus = 8 WHERE idreservation = " + req.query.reservationNum;
+	var query = "UPDATE reservations SET idreservationstatus = 8 WHERE idreservation = " + req.query.reservationNum + ";DELETE FROM unitsoccupied WHERE idreservation = " + req.query.reservationNum + "; UPDATE units SET idunitstatus = 1";
 	console.log(query);
 	executeWWQuery(res, query);
 });
@@ -744,11 +886,56 @@ app.put("/api/saveReservation", function(req,res){
 	executeQuery(res, req); 
 });
 
+app.post("/api/updateRes", async function(req,res){
+    let out;
+    out = updateRes(req.query.resId, req.query.forename,req.query.arriving,req.query.departing,req.query.unitTypeId,req.query.unitId, req.query.rateCodeId);
+    res.send(out);
+})
+
+function updateRes(reservationNumber,forename,arriving,departing,unitTypeId, unitId,rateCodeId){
+    return sqlSeriate.execute({
+        procedure: "sp_updateRes",
+        params: {
+            idReservation: {
+                type: sqlSeriate.INT,
+                val: reservationNumber
+            },
+            newForename: {
+                type: sqlSeriate.VARCHAR,
+                val: forename
+            },
+            newArrivalDate: {
+                type: sqlSeriate.DATE,
+                val: arriving
+            },
+            newDepartureDate: {
+                type: sqlSeriate.DATE,
+                val: departing
+            },
+            newUnitType: {
+                type: sqlSeriate.INT,
+                val: unitTypeId
+            },
+            newUnit: {
+                type: sqlSeriate.INT,
+                val: unitId
+            },
+            newRateCode: {
+                type: sqlSeriate.INT,
+                val: rateCodeId
+            }
+        }
+    })
+}
+
+
+
+
 //HOUSEKEEPING
 	//SET ROOM STATUS TO CLEAN
 		//FOR DEV IS CURRENTLY HARCODED TO SET ROOMID 1 TO CLEAN -- NEED TO FIX DYNAMICALLY - NEED AVAILABILITY SP
 app.post('/api/cleanRoom',function(req, res){
-	var query = "UPDATE units SET idhskstatus = 1 WHERE idunit = " + req.query.roomId;
+	var query = "UPDATE units SET idhskstatus = " + req.query.statusId + " WHERE idunit = " + req.query.roomId;
 	console.log(query);
 	executeWWQuery(res, query);
 })
