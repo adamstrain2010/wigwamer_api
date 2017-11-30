@@ -428,6 +428,11 @@ function InsertExtra(clientId, propertyId, extraId, reservationId, chargeDate, a
     })
 }
 
+app.post("/api/deleteExtra",function(req,res){
+    var query = "DELETE FROM reservations_extras WHERE idreservationextras = " + req.query.extraId + " AND idreservation = " + req.query.resId;
+    executeWWQuery(res,query);
+})
+
 function CalcBalanceToPay(idReservation){
     return sqlSeriate.execute({
         procedure: "sp_GetBalanceToPay",
