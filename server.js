@@ -211,6 +211,49 @@ function getDetailedAvailability(fromdate, todate, idUnitType){
     })
 }
 
+app.get("/api/getPlannerData", async function(req, res){
+    let out;
+    out = await getPlannerData(req.query.fromDate, req.query.toDate);
+    res.send(out);
+})
+
+function getPlannerData(fromDate, toDate){
+    return sqlSeriate.execute({
+        procedure: "sp_GetPlannerData",
+        params: {
+            arriving: {
+                type: sqlSeriate.DATE,
+                val: fromDate
+            },
+            departing: {
+                type: sqlSeriate.DATE,
+                val: toDate
+            }
+        }
+    })
+}
+
+
+// function getDetailedAvailability(fromdate, todate, idUnitType){
+//     return sqlSeriate.execute({
+//         procedure: "sp_getUnitAvailability",
+//         params: {
+//             fromDate: {
+//                 type: sqlSeriate.DATE,
+//                 val: fromdate
+//             },
+//             toDate: {
+//                 type: sqlSeriate.DATE,
+//                 val: todate
+//             },
+//             idunittype: {
+//                 type: sqlSeriate.INT,
+//                 val: idUnitType
+//             }
+//         }
+//     })
+// }
+
 app.get("/api/getAllReservations", function(req, res){
 	var query = "SELECT * FROM reservations r JOIN reservationstatus rs ON r.idreservationstatus = rs.idreservationstatus WHERE fromdate BETWEEN '" + req.query.arrivalFromDate + "' AND '" + req.query.arrivalToDate + "' AND todate BETWEEN '" + req.query.departureFromDate + "' AND '" + req.query.departureToDate + "'";
 	executeWWQuery(res, query);
@@ -510,6 +553,40 @@ function GetCharges(idReservation){
     })
 }
 
+// app.get("/api/getBreakdown", function(res,req){
+//    var query = "select idunitsbooked, bookeddate, 'Accommodation' as 'description', ratevalue, 'Accommodation' as type from unitsbooked where idreservation = " + req.query.resId + " UNION ALL select t.idtransaction, null, tc.transactiondescription as 'description', t.valuetransaction, 'trans' as type from transactions t JOIN transactioncodes tc ON t.idtransactioncode = tc.idtransactioncode where idreservation = " + req.query.resId " + UNION ALL select idreservationextras, chargedate,'Other' as 'description', adultcharge, 'extra' as type from reservations_extras where idreservation = " + resId;
+//    executeWWQuery(res, query);
+// });
+
+app.get("/api/getBreakdown", function(req,res){
+    var query = "select idunitsbooked as 'id', bookeddate as 'date', 'Accommodation' as 'description', ratevalue as 'value', 'Accommodation' as chargeType, posted from unitsbooked where idreservation = " + req.query.resId + " UNION ALL select t.idtransaction, t.datetransaction, tc.transactiondescription as 'description', t.valuetransaction, 'Posting' as type, 'Y' from transactions t JOIN transactioncodes tc ON t.idtransactioncode = tc.idtransactioncode where idreservation = " + req.query.resId  + "and idtransactiongroup NOT IN (1,5) UNION ALL select t.idtransaction, t.datetransaction, tc.transactiondescription as 'description', t.valuetransaction, 'Payment' as type, 'Y' from transactions t JOIN transactioncodes tc ON t.idtransactioncode = tc.idtransactioncode where idreservation = " + req.query.resId + " and idtransactiongroup = 5 UNION ALL select re.idreservationextras, re.chargedate ,e.extrasdescription as 'description', re.adultcharge, 'Extra' as type , 'Y' from reservations_extras re join extras e ON re.idextras = e.idextras where idreservation = " + req.query.resId;
+    executeWWQuery(res, query);
+})
+
+function voidTransaction(transactionId){
+    return sqlSeriate.execute({
+        query: "UPDATE transactions SET void = 1 WHERE idtransaction = @idTransaction",
+        params:{
+            idTransaction:{
+                type: sqlSeriate.INT,
+                val: transactionId
+            }
+        }
+    })
+}
+
+app.post("/api/logChange", function(req,res){
+    var query = "INSERT INTO reservationlog (insertdate, idproperty, idclient, idreservation, type, oldvalue, newvalue, iduser) VALUES ('2017-01-01', 1,1,100,'MADE','','2017-06-01', 1)";
+    executeWWQuery(req, query);
+})
+
+
+// app.post("/api/logChange", function(req,res){
+//     var query = "INSERT INTO reservationlog (insertdate, idproperty, idclient, idreservation, type, oldvalue, newvalue, iduser) VALUES ('" + req.query.insertDate + "'," + req.query.idProperty + ", " + req.query.idClient + ", " + req.query.resId + ", '" + req.query.detail + "', '" + req.query.from + "', '" + req.query.to + "', " + req.query.idUser + ")";
+//     //res.send(query);
+//     executeWWQuery(res, query);
+// })
+
 app.post("/api/insertExtra", async function(req,res) {
     let out;
     console.log("CLIENT ID:");
@@ -521,18 +598,30 @@ app.post("/api/insertExtra", async function(req,res) {
     res.send(out);
 })
 
-function insertPosting(reservationIdIN, transcodeIdIN, valueIN, taxIn){
+function insertPosting(idClient, idProperty, userId, reservationIdIN, transcodeIdIN, valueIN, taxIn, sysDate){
     var d = moment.utc().local().format("L LT");
 	console.log(d);
-
-	sqlSeriate.getPlainContext("testConn")
+    sqlSeriate.getPlainContext("testConn")
 	.step("insertPosting",{
-		query: "INSERT INTO transactions (idreservation, idtransactioncode, valuetransaction, datetransaction, valuetax) VALUES (@reservationId, @transCodeId, @val, @transDate,@valueTax)",
+		//query: "INSERT INTO transactions (idclient, idproperty,idreservation, iduser, idtransactioncode, valuetransaction, datetransaction, valuetax, idoriginalreservation, systemdatetransaction) VALUES (@idClient, @idProperty, @reservationId,@userId, @transCodeId, @val, @transDate,@valueTax, @reservationId, '1900-01-01')",
+		query: "INSERT INTO transactions (idclient, idproperty,idreservation, iduser, idtransactioncode, valuetransaction, datetransaction, valuetax, idoriginalreservation, systemdatetransaction) VALUES (@idClient, @idPropery, @reservationId,@userId, @transCodeId, @val, @transDate,@valueTax, @reservationId, '1900-01-01')",
 		params: {
-			reservationId: {
+			idClient:{
+                type: sqlSeriate.INT,
+                val: idClient,
+            },
+            idPropery:{
+                type: sqlSeriate.INT,
+                val: idProperty,
+            },
+		    reservationId: {
 				type: sqlSeriate.INT,
 				val: reservationIdIN,
 			},
+            userId: {
+			    type: sqlSeriate.INT,
+                val: userId
+            },
 			transCodeId: {
 				type: sqlSeriate.INT,
 				val: transcodeIdIN,
@@ -543,7 +632,7 @@ function insertPosting(reservationIdIN, transcodeIdIN, valueIN, taxIn){
 			},
 			transDate:{
 				type: sqlSeriate.NVARCHAR,
-				val: moment().format("YYYY-MM-DD HH:mm:ss"),
+				val: sysDate,
 			},
 			valueTax:{
 				type: sqlSeriate.MONEY,
@@ -564,7 +653,7 @@ function insertPosting(reservationIdIN, transcodeIdIN, valueIN, taxIn){
 app.get("/api/insertPosting",async function(req,res){
 	console.log(req.query.value);
 	let out;
-	out = await insertPosting(req.query.reservationId, req.query.transcodeId, req.query.value, req.query.tax);
+	out = await insertPosting(1,1,1,req.query.reservationId, req.query.transcodeId, req.query.value, req.query.tax, req.query.sysDate);
 	res.send(out);
 });
 
